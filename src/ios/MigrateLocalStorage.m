@@ -1,28 +1,62 @@
+/**
+* Code Adapted from
+* https://github.com/MaKleSoft/cordova-plugin-migrate-localstorage and
+* https://github.com/Telerik-Verified-Plugins/WKWebView/blob/master/src/ios/MyMainViewController.m
+*/
+
 #import "MigrateLocalStorage.h"
 
-#define TAG @"ジェレミー"
+#define TAG @"\nジェレミー"
+
+#define ORIG_FOLDER @"WebKit/LocalStorage"
 #define ORIG_LS_FILEPATH @"WebKit/LocalStorage/file__0.localstorage"
 #define ORIG_LS_CACHE @"Caches/file__0.localstorage"
 // #define TARGET_LS_FILEPATH @"WebsiteData/LocalStorage/file__0.localstorage"
-#define TARGET_LS_FILEPATH @"WebsiteData/LocalStorage/http_localhost_9002.localstorage"
+#define TARGET_LS_FILEPATH @"WebsiteData/LocalStorage/http_localhost_9002.localstorage" // TODO: add WebKit in front
+#define ORIG_IDB_FILEPATH @"WebKit/LocalStorage/___IndexedDB/file__0"
+#define TARGET_IDB_FILEPATH @"WebsiteData/IndexedDB/http_localhost_9002" // TODO: add WebKit in front
 
-// TODO: test IndexedDB
-// TODO: test remigration
+// TODO: cleanup of redundant files
+// TODO: test simulator
 
 @implementation MigrateLocalStorage
 
-- (BOOL) copyFrom:(NSString*)src to:(NSString*)dest
+/** File Utility Functions **/
+
+/**
+* Replaces an item found at dest with item found at src
+*/
+- (BOOL) deleteFile:(NSString*)path
 {
     NSFileManager* fileManager = [NSFileManager defaultManager];
 
-    // Bail out if source file does not exist
+    // Bail out if source file does not exist // not really necessary <- error case already handle by fileManager copyItemAtPath
+    if (![fileManager fileExistsAtPath:path]) {
+        NSLog(@"%@ Source file does not exist", TAG);
+        return NO;
+    }
+
+    NSError* err;
+    BOOL res = [fileManager removeItemAtPath:path error:&err];
+    NSLog(@"%@ error %@ \n", TAG, [err localizedDescription]);
+    return res;
+}
+
+/**
+* Moves an item from src to dest. Works only if dest file has not already been created.
+*/
+- (BOOL) move:(NSString*)src to:(NSString*)dest
+{
+    NSFileManager* fileManager = [NSFileManager defaultManager];
+
+    // Bail out if source file does not exist // not really necessary <- error case already handle by fileManager copyItemAtPath
     if (![fileManager fileExistsAtPath:src]) {
         NSLog(@"%@ Source file does not exist", TAG);
         return NO;
     }
 
     // Bail out if dest file exists
-    if ([fileManager fileExistsAtPath:dest]) {
+    if ([fileManager fileExistsAtPath:dest]) { // not really necessary <- error case already handle by fileManager copyItemAtPath
         NSLog(@"%@ Target file exists", TAG);
         return NO;
     }
@@ -34,9 +68,13 @@
     }
 
     // copy src to dest
-    return [fileManager copyItemAtPath:src toPath:dest error:nil];
-    // return YES;
+    BOOL res = [fileManager moveItemAtPath:src toPath:dest error:nil];
+    return res;
 }
+
+/** End File Utility Functions **/
+
+/** LS Functions **/
 
 /**
 * Gets filepath of localStorage file we want to copy from
@@ -63,7 +101,7 @@
 {
     NSString* appLibraryFolder = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
 
-    NSString* target = [[NSString alloc] initWithString: [appLibraryFolder stringByAppendingPathComponent:@"WebKit"]];
+    NSString* target = [appLibraryFolder stringByAppendingPathComponent:@"WebKit"];
     #if TARGET_IPHONE_SIMULATOR
         NSLog(@"%@ 🌕 I am a simulator", TAG);
         // the simulutor squeezes the bundle id into the path
@@ -78,11 +116,9 @@
 * Checks if localStorage file should be migrated. If so, migrate.
 * NOTE: Will only migrate data if there is no localStorage data for WKWebView. This only happens when WKWebView is set up for the first time.
 */
-- (void) migrateLocalStorage
+- (BOOL) migrateLocalStorage
 {
-    // Migrate UIWebView local storage files to WKWebView. Adapted from
-    // https://github.com/MaKleSoft/cordova-plugin-migrate-localstorage and
-    // https://github.com/Telerik-Verified-Plugins/WKWebView/blob/master/src/ios/MyMainViewController.m
+    // Migrate UIWebView local storage files to WKWebView. 
 
     NSString* original = [self resolveOriginalFile];
     NSLog(@"%@ 📦 original %@", TAG, original);
@@ -90,24 +126,95 @@
     NSString* target = [self resolveTargetFile];
     NSLog(@"%@ 🏹 target %@", TAG, target);
 
+    // NOTE: can clean up further
     // Only copy data if no existing localstorage data exists yet for wkwebview
     if (![[NSFileManager defaultManager] fileExistsAtPath:target]) {
         NSLog(@"%@ 🕐 No existing localstorage data found for WKWebView. Migrating data from UIWebView", TAG);
-        BOOL success = [self copyFrom:original to:target];
-        BOOL success2 = [self copyFrom:[original stringByAppendingString:@"-shm"] to:[target stringByAppendingString:@"-shm"]];
-        BOOL success3 = [self copyFrom:[original stringByAppendingString:@"-wal"] to:[target stringByAppendingString:@"-wal"]];
-        NSLog(@"%@ copy status %d %d %d", TAG, success, success2, success3);
+        BOOL success1 = [self move:original to:target];
+        BOOL success2 = [self move:[original stringByAppendingString:@"-shm"] to:[target stringByAppendingString:@"-shm"]];
+        BOOL success3 = [self move:[original stringByAppendingString:@"-wal"] to:[target stringByAppendingString:@"-wal"]];
+        NSLog(@"%@ copy status %d %d %d", TAG, success1, success2, success3);
+        return success1 && success2 && success3;
     }
     else {
-        // NSLog(@"%@ ⚪️ found data. not migrating", TAG);
-        NSLog(@"%@ 🔴 found data. STILL migrating", TAG);
+        NSLog(@"%@ ⚪️ found LS data. not migrating", TAG);
+        return NO;
     }
 }
 
+/** End LS Functions **/
+
+/** IndexedDB Functions **/
+
+- (NSString*) resolveIDBOriginalFile {
+    NSString* appLibraryFolder = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+    NSString* original = [appLibraryFolder stringByAppendingPathComponent:ORIG_IDB_FILEPATH];
+    return original;
+}
+
+- (NSString*) resolveIDBTargetFile {
+    NSString* appLibraryFolder = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+
+    NSString* target = [appLibraryFolder stringByAppendingPathComponent:@"WebKit"];
+    
+    #if TARGET_IPHONE_SIMULATOR
+        NSLog(@"%@ 🌕 I am a simulator", TAG);
+
+        // NSString* appLibraryFolder = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+    
+        // NSString* target = [appLibraryFolder stringByAppendingPathComponent:@"WebKit"];
+        
+        // NSMutableString* targetMutable = [NSMutableString stringWithString:target];
+        // NSRange range = [targetMutable rangeOfString:@"WebKit"];
+        // NSUInteger idx = range.location + range.length;
+        // NSLog(@"%@ idx %d", TAG, idx);
+        // [targetMutable insertString:@"*inserted*" atIndex:idx];
+        // NSLog(@"%@ targetMutable %@", TAG, targetMutable);
+    
+        // the simulutor squeezes the bundle id into the path
+        NSString* bundleIdentifier = [[[NSBundle mainBundle] infoDictionary] objectForKey:@"CFBundleIdentifier"];
+        target = [target stringByAppendingPathComponent:bundleIdentifier];
+    #endif
+
+    return [target stringByAppendingPathComponent:TARGET_IDB_FILEPATH];
+}
+
+- (BOOL) migrateIndexedDB
+{
+    NSLog(@"%@ ▶️ migrating indexedDB", TAG);
+    NSString* original = [self resolveIDBOriginalFile];
+    NSLog(@"%@ 📦 original %@", TAG, original);
+
+    NSString* target = [self resolveIDBTargetFile];
+    NSLog(@"%@ 🏹 target %@", TAG, target);
+    
+    if (![[NSFileManager defaultManager] fileExistsAtPath:target]) {
+        NSLog(@"%@ 🕐 No existing IDB data found for WKWebView. Migrating data from UIWebView", TAG);
+        BOOL success = [self move:original to:target];
+        // BOOL success2 = [self move:[original stringByAppendingString:@"-shm"] to:[target stringByAppendingString:@"-shm"]];
+        // BOOL success3 = [self move:[original stringByAppendingString:@"-wal"] to:[target stringByAppendingString:@"-wal"]];
+        NSLog(@"%@ copy status %d", TAG, success);
+        return success;
+    }
+    else {
+        NSLog(@"%@ ⚪️ found IDB data. Not migrating", TAG);
+        return NO;
+    }
+}
+
+/** End IndexedDB Functions **/
+
 - (void)pluginInitialize
 {
-    NSLog(@"%@ ✅ plugin initialised", TAG);
-    [self migrateLocalStorage];
+    BOOL lsResult = [self migrateLocalStorage];
+    BOOL idbResult = [self migrateIndexedDB];
+    if (lsResult && idbResult) {
+        // if all successfully migrated, do some cleanup!
+        NSString* appLibraryFolder = [NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES) objectAtIndex:0];
+        NSString* originalFolder = [appLibraryFolder stringByAppendingPathComponent:ORIG_FOLDER];
+        BOOL res = [self deleteFile:originalFolder];
+        NSLog(@"%@ final deletion res %d", TAG, res);
+    }
 }
 
 
