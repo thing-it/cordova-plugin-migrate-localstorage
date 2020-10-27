@@ -21,6 +21,9 @@ cordova plugin add https://github.com/viglino/cordova-plugin-migrate-localstorag
 
 ## Notes
 
+- Thanks to [gerhardsletten](https://github.com/apache/cordova-ios/issues/906#issuecomment-672692414) 
+to help finding correct path...
+
 - LocalStorage files are only copied over once and only if no LocalStorage data exists for `WKWebView`
 yet. This means that if you've run your app with `WKWebView` before this plugin will likely not work.
 
