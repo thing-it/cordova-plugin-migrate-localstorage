@@ -1,6 +1,6 @@
 {
   "name": "@thing-it/cordova-plugin-migrate-localstorage",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "cordova": {
     "id": "cordova-plugin-migrate-localstorage",
     "platforms": [
