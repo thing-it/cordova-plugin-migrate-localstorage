@@ -10,7 +10,7 @@
 
 #define ORIG_LS_FILEPATH @"WebKit/WebsiteData/LocalStorage/ionic_thing-it.com_0.localstorage"
 #define ORIG_LS_CACHE @"Caches/ionic_thing-it.com_0.localstorage"
-#define TARGET_LS_FILEPATH @"WebKit/WebsiteData/LocalStorage/file__0.localstorage"
+#define TARGET_LS_FILEPATH @"WebKit/WebsiteData/LocalStorage/ionic_localhost_0.localstorage"
 
 @implementation MigrateLocalStorage
 
